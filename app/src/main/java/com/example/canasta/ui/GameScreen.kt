@@ -2,19 +2,27 @@
 // ABOUTME: Displays player hand, draw/discard piles, and game controls
 package com.example.canasta.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.canasta.domain.*
 
 @Composable
 fun GameScreen(
     gameState: GameState,
+    turnPhase: TurnPhase,
     onDrawFromPile: () -> Unit,
     onTakeDiscard: () -> Unit,
     onDiscard: (Card) -> Unit,
@@ -22,7 +30,17 @@ fun GameScreen(
     onShow: (Card) -> Unit
 ) {
     var selectedCards by remember { mutableStateOf(setOf<Card>()) }
+    var sortedHand by remember { mutableStateOf<List<Card>>(emptyList()) }
+    var autoSort by remember { mutableStateOf(true) }
     val currentPlayer = gameState.currentPlayer()
+
+    LaunchedEffect(currentPlayer.hand) {
+        if (autoSort) {
+            sortedHand = sortCardsBySuit(currentPlayer.hand)
+        } else {
+            sortedHand = currentPlayer.hand
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -51,6 +69,7 @@ fun GameScreen(
             // Draw pile
             Button(
                 onClick = onDrawFromPile,
+                enabled = turnPhase == TurnPhase.DRAW,
                 modifier = Modifier.padding(8.dp)
             ) {
                 Text("Draw\n(${gameState.drawPile.cards.size})")
@@ -74,32 +93,101 @@ fun GameScreen(
 
             Button(
                 onClick = onTakeDiscard,
-                enabled = gameState.discardPile.isNotEmpty(),
+                enabled = turnPhase == TurnPhase.DRAW && gameState.discardPile.isNotEmpty(),
                 modifier = Modifier.padding(8.dp)
             ) {
                 Text("Take All")
             }
         }
 
-        // Current player turn indicator
-        Text(
-            text = "${currentPlayer.name}'s Turn",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        )
+        // Current player turn indicator with phase
+        Column(
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "${currentPlayer.name}'s Turn",
+                style = MaterialTheme.typography.titleLarge
+            )
+            Text(
+                text = when (turnPhase) {
+                    TurnPhase.DRAW -> "DRAW PHASE: Pick a card"
+                    TurnPhase.PLAY -> "PLAY PHASE: Create melds or discard"
+                    TurnPhase.DISCARD -> "DISCARD PHASE: Discard a card"
+                },
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+        }
 
         // Bottom: Current player's hand and controls
         Column {
-            Text(
-                text = "Your Hand (${currentPlayer.hand.size} cards)",
-                style = MaterialTheme.typography.titleMedium
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Your Hand (${currentPlayer.hand.size} cards)",
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            autoSort = true
+                            sortedHand = sortCardsBySuit(currentPlayer.hand)
+                        },
+                        enabled = !autoSort
+                    ) {
+                        Text("Sort", fontSize = 12.sp)
+                    }
+
+                    if (selectedCards.size == 1) {
+                        val selectedCard = selectedCards.first()
+                        val currentIndex = sortedHand.indexOf(selectedCard)
+
+                        IconButton(
+                            onClick = {
+                                if (currentIndex > 0) {
+                                    autoSort = false
+                                    sortedHand = sortedHand.toMutableList().apply {
+                                        removeAt(currentIndex)
+                                        add(currentIndex - 1, selectedCard)
+                                    }
+                                }
+                            },
+                            enabled = currentIndex > 0
+                        ) {
+                            Text("◀", fontSize = 16.sp)
+                        }
+
+                        IconButton(
+                            onClick = {
+                                if (currentIndex < sortedHand.size - 1) {
+                                    autoSort = false
+                                    sortedHand = sortedHand.toMutableList().apply {
+                                        removeAt(currentIndex)
+                                        add(currentIndex + 1, selectedCard)
+                                    }
+                                }
+                            },
+                            enabled = currentIndex < sortedHand.size - 1
+                        ) {
+                            Text("▶", fontSize = 16.sp)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(currentPlayer.hand) { card ->
+                items(sortedHand) { card ->
                     CardItem(
                         card = card,
                         isSelected = selectedCards.contains(card),
@@ -128,7 +216,7 @@ fun GameScreen(
                             selectedCards = emptySet()
                         }
                     },
-                    enabled = selectedCards.size >= 3
+                    enabled = turnPhase == TurnPhase.PLAY && selectedCards.size >= 3
                 ) {
                     Text("Create Meld")
                 }
@@ -140,7 +228,7 @@ fun GameScreen(
                             selectedCards = emptySet()
                         }
                     },
-                    enabled = selectedCards.size == 1
+                    enabled = turnPhase == TurnPhase.PLAY && selectedCards.size == 1
                 ) {
                     Text("Discard")
                 }
@@ -151,7 +239,7 @@ fun GameScreen(
                             onShow(selectedCards.first())
                         }
                     },
-                    enabled = selectedCards.size == 1 && currentPlayer.hand.size == 1
+                    enabled = turnPhase == TurnPhase.PLAY && selectedCards.size == 1 && currentPlayer.hand.size == 1
                 ) {
                     Text("Show")
                 }
@@ -201,52 +289,111 @@ fun CardItem(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    Button(
+    val (cardColor, suitSymbol) = when (card) {
+        is Card.Joker -> Color.Black to "JOKER"
+        is Card.Regular -> when (card.suit) {
+            Suit.HEARTS, Suit.DIAMONDS -> Color.Red to getSuitName(card.suit)
+            Suit.CLUBS, Suit.SPADES -> Color.Black to getSuitName(card.suit)
+        }
+    }
+
+    Surface(
         onClick = onClick,
-        colors = ButtonDefaults.buttonColors(
-            containerColor = if (isSelected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.secondary
-            }
-        ),
         modifier = Modifier
-            .width(80.dp)
-            .height(100.dp)
+            .width(90.dp)
+            .height(120.dp)
+            .border(
+                width = if (isSelected) 3.dp else 1.dp,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
+                shape = RoundedCornerShape(8.dp)
+            ),
+        shape = RoundedCornerShape(8.dp),
+        color = Color.White
     ) {
-        Text(
-            text = cardToString(card),
-            style = MaterialTheme.typography.titleLarge
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = getRankString(card),
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = cardColor
+            )
+
+            Text(
+                text = suitSymbol,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = cardColor
+            )
+
+            Text(
+                text = getRankString(card),
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = cardColor
+            )
+        }
+    }
+}
+
+fun getRankString(card: Card): String {
+    return when (card) {
+        is Card.Joker -> "★"
+        is Card.Regular -> when (card.rank) {
+            Rank.TWO -> "2"
+            Rank.THREE -> "3"
+            Rank.FOUR -> "4"
+            Rank.FIVE -> "5"
+            Rank.SIX -> "6"
+            Rank.SEVEN -> "7"
+            Rank.EIGHT -> "8"
+            Rank.NINE -> "9"
+            Rank.TEN -> "10"
+            Rank.JACK -> "J"
+            Rank.QUEEN -> "Q"
+            Rank.KING -> "K"
+            Rank.ACE -> "A"
+        }
+    }
+}
+
+fun getSuitName(suit: Suit): String {
+    return when (suit) {
+        Suit.HEARTS -> "HEARTS"
+        Suit.DIAMONDS -> "DIAMONDS"
+        Suit.CLUBS -> "CLUBS"
+        Suit.SPADES -> "SPADES"
     }
 }
 
 fun cardToString(card: Card): String {
     return when (card) {
-        is Card.Joker -> "🃏"
-        is Card.Regular -> {
-            val rank = when (card.rank) {
-                Rank.TWO -> "2"
-                Rank.THREE -> "3"
-                Rank.FOUR -> "4"
-                Rank.FIVE -> "5"
-                Rank.SIX -> "6"
-                Rank.SEVEN -> "7"
-                Rank.EIGHT -> "8"
-                Rank.NINE -> "9"
-                Rank.TEN -> "10"
-                Rank.JACK -> "J"
-                Rank.QUEEN -> "Q"
-                Rank.KING -> "K"
-                Rank.ACE -> "A"
-            }
-            val suit = when (card.suit) {
-                Suit.HEARTS -> "♥"
-                Suit.DIAMONDS -> "♦"
-                Suit.CLUBS -> "♣"
-                Suit.SPADES -> "♠"
-            }
-            "$rank$suit"
-        }
+        is Card.Joker -> "JOKER"
+        is Card.Regular -> "${getRankString(card)} ${getSuitName(card.suit)}"
     }
+}
+
+fun sortCardsBySuit(hand: List<Card>): List<Card> {
+    val suitOrder = listOf(Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS)
+    val rankOrder = listOf(
+        Rank.ACE, Rank.TWO, Rank.THREE, Rank.FOUR, Rank.FIVE, Rank.SIX,
+        Rank.SEVEN, Rank.EIGHT, Rank.NINE, Rank.TEN, Rank.JACK, Rank.QUEEN, Rank.KING
+    )
+
+    val jokers = hand.filterIsInstance<Card.Joker>()
+    val regularCards = hand.filterIsInstance<Card.Regular>()
+
+    val sortedRegular = regularCards.sortedWith(
+        compareBy<Card.Regular>(
+            { suitOrder.indexOf(it.suit) },
+            { rankOrder.indexOf(it.rank) }
+        )
+    )
+
+    return jokers + sortedRegular
 }

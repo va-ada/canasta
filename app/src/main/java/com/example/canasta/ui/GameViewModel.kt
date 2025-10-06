@@ -10,6 +10,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+enum class TurnPhase {
+    DRAW,  // Must draw one card or take discard pile
+    PLAY,  // Can create melds (optional)
+    DISCARD  // Must discard one card to end turn
+}
+
 class GameViewModel : ViewModel() {
 
     private val _gameState = MutableStateFlow<GameState?>(null)
@@ -17,6 +23,9 @@ class GameViewModel : ViewModel() {
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
+
+    private val _turnPhase = MutableStateFlow(TurnPhase.DRAW)
+    val turnPhase: StateFlow<TurnPhase> = _turnPhase.asStateFlow()
 
     fun startNewGame() {
         val players = listOf(
@@ -26,16 +35,23 @@ class GameViewModel : ViewModel() {
             Player(4, "Player 4", emptyList())
         )
         _gameState.value = GameState.create(players).deal()
-        _message.value = "Game started! Player 1's turn"
+        _turnPhase.value = TurnPhase.DRAW
+        _message.value = "Game started! Player 1's turn - Draw a card"
     }
 
     fun drawFromPile() {
         val current = _gameState.value ?: return
 
+        if (_turnPhase.value != TurnPhase.DRAW) {
+            _message.value = "You must discard a card first!"
+            return
+        }
+
         when (val result = GameActions.drawFromPile(current)) {
             is ActionResult.Success -> {
                 _gameState.value = result.gameState
-                _message.value = "Drew a card from pile"
+                _turnPhase.value = TurnPhase.PLAY
+                _message.value = "Drew a card. You can create melds or discard to end turn."
             }
             is ActionResult.Failure -> {
                 _message.value = result.reason
@@ -46,10 +62,16 @@ class GameViewModel : ViewModel() {
     fun takeDiscardPile() {
         val current = _gameState.value ?: return
 
+        if (_turnPhase.value != TurnPhase.DRAW) {
+            _message.value = "You must discard a card first!"
+            return
+        }
+
         when (val result = GameActions.takeDiscardPile(current)) {
             is ActionResult.Success -> {
                 _gameState.value = result.gameState
-                _message.value = "Took entire discard pile"
+                _turnPhase.value = TurnPhase.PLAY
+                _message.value = "Took discard pile. You can create melds or discard to end turn."
             }
             is ActionResult.Failure -> {
                 _message.value = result.reason
@@ -60,11 +82,17 @@ class GameViewModel : ViewModel() {
     fun discard(card: Card) {
         val current = _gameState.value ?: return
 
+        if (_turnPhase.value == TurnPhase.DRAW) {
+            _message.value = "You must draw a card first!"
+            return
+        }
+
         when (val result = GameActions.discard(current, card)) {
             is ActionResult.Success -> {
                 val nextTurn = result.gameState.nextTurn()
                 _gameState.value = nextTurn
-                _message.value = "${nextTurn.currentPlayer().name}'s turn"
+                _turnPhase.value = TurnPhase.DRAW
+                _message.value = "${nextTurn.currentPlayer().name}'s turn - Draw a card"
             }
             is ActionResult.Failure -> {
                 _message.value = result.reason

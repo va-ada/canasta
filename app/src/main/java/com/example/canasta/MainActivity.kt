@@ -32,6 +32,7 @@ fun CanastaApp() {
     val viewModel: GameViewModel = viewModel()
     val gameState by viewModel.gameState.collectAsState()
     val message by viewModel.message.collectAsState()
+    val turnPhase by viewModel.turnPhase.collectAsState()
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
@@ -55,6 +56,7 @@ fun CanastaApp() {
                 else -> {
                     GameScreen(
                         gameState = state,
+                        turnPhase = turnPhase,
                         onDrawFromPile = { viewModel.drawFromPile() },
                         onTakeDiscard = { viewModel.takeDiscardPile() },
                         onDiscard = { card -> viewModel.discard(card) },
