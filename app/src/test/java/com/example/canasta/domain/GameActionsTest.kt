@@ -61,8 +61,10 @@ class GameActionsTest {
 
     @Test
     fun cannotDiscardCardNotInHand() {
-        val game = createTestGame()
-        val cardNotInHand = Card.Joker
+        val player = Player(1, "P1", listOf(Card.Regular(Rank.FIVE, Suit.HEARTS)))
+        val players = listOf(player, Player(2, "P2", emptyList()), Player(3, "P3", emptyList()), Player(4, "P4", emptyList()))
+        val game = GameState.create(players)
+        val cardNotInHand = Card.Regular(Rank.ACE, Suit.SPADES)
 
         val result = GameActions.discard(game, cardNotInHand)
 
